@@ -67,12 +67,28 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 			, *((uint32_t *)ebp + 2), *((uint32_t *)ebp + 3)
 			, *((uint32_t *)ebp + 4), *((uint32_t *)ebp + 5)
 			, *((uint32_t *)ebp + 6));
+		cprint_debuginfo(*((uint32_t *)ebp + 1));
 		ebp = (uint32_t)(*((int *)ebp));
 	}
 	return 0;
 }
 
-
+#define MAX_FUNC_LEN 64
+static void cprint_debuginfo(uintptr_t eip) {
+	struct Eipdebuginfo debuginfo;
+	unsigned char func_name[MAX_FUNC_LEN] = { 0 };
+	int result = debuginfo_eip(eip, &debuginfo);
+	if (result < 0) {
+		cprintf("error: cannot find debuginfo for eip: %08x", eip);
+		return;
+	}
+	for (int i = 0; i < debuginfo.eip_fn_namelen; i++) {
+		func_name[i] = debuginfo.eip_fn_name[i];
+	}
+	cprintf("         %s:%d: %s+%d\n",
+		debuginfo.eip_file, debuginfo.eip_line,
+		func_name, eip - debuginfo.eip_fn_addr);
+}
 
 /***** Kernel monitor command interpreter *****/
 
