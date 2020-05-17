@@ -579,3 +579,66 @@ esp -> ret-address
 ```
 
 If the gcc changes its order, the interface should change to always allow the pushing order is reversed to achive the same result.
+
+- Exercise 9. Determine where the kernel initializes its stack, and exactly where in memory its stack is located. How does the kernel reserve space for its stack? And at which "end" of this reserved area is the stack pointer initialized to point to?
+
+```
+#define	KERNBASE	0xF0000000
+// Kernel stack.
+#define KSTACKTOP	KERNBASE
+#define KSTKSIZE	(8*PGSIZE)   		// size of a kernel stack
+#define KSTKGAP		(8*PGSIZE)   		// size of a kernel stack guard
+
+[KERNBASE>>PDXSHIFT] = ((uintptr_t)entry_pgtable - KERNBASE) + PTE_P + PTE_W
+```
+
+According to the paging configuration, the KERNBASE and 4MB below has been mapped into phys memory. The kernel stack should be 32k. Get back to the right start:
+
+```
+relocated:
+	# Clear the frame pointer register (EBP)
+	# so that once we get into debugging C code,
+	# stack backtraces will be terminated properly.
+	movl	$0x0,%ebp			# nuke frame pointer
+	# Set the stack pointer
+	movl	$(bootstacktop),%esp
+	# now to C code
+	call	i386_init
+```
+
+It just move 4k bootstacktop(KERNBASE) into $esp and call into the right 1st function of kernel.
+
+- Exercise 12. Modify your stack backtrace function to display, for each eip, the function name, source file name, and line number corresponding to that eip.
+
+> In debuginfo_eip, where do __STAB_* come from? 
+
+They comes from the lds load script for the sections .stab and .stabstr:
+```
+	/* Include debugging information in kernel memory */
+	.stab : {
+		PROVIDE(__STAB_BEGIN__ = .);
+		*(.stab);
+		PROVIDE(__STAB_END__ = .);
+		BYTE(0)		/* Force the linker to allocate space
+				   for this section */
+	}
+
+	.stabstr : {
+		PROVIDE(__STABSTR_BEGIN__ = .);
+		*(.stabstr);
+		PROVIDE(__STABSTR_END__ = .);
+		BYTE(0)		/* Force the linker to allocate space
+				   for this section */
+	}
+```
+
+According to the standard defination of N_SLINE, it could be found by pairing n_value and extract the n_desc from found record:
+
+```
+Line number in text segment
+
+.stabn N_SLINE, 0, desc, value
+desc  -> line_number
+value -> code_address (relocatable addr where the corresponding code starts)
+For single source lines that generate discontiguous code, such as flow of control statements, there may be more than one N_SLINE stab for the same source line. In this case there is a stab at the start of each code range, each with the same line number.
+```
