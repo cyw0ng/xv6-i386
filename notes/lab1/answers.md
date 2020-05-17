@@ -97,3 +97,36 @@ e_phnum
 ```
 
 First, it reads the fixed length of ELFHDR into memory, then, relocates to program segment and map each section into memory.
+
+- What if changing the start address of the text section
+
+```
+    // Move the 0x7c00 to 0x0000 as the example
+	$(V)$(LD) $(LDFLAGS) -N -e start -Ttext 0x0000 -o $@.out $^
+```
+
+Comparing the normal and the abnormal one, we can find that the jumping segment is not the same, and the relocated address is not the same too:
+```
+(gdb) si
+[f000:cf59]    0xfcf59: ljmpw  $0xf,$0xcf61
+
+(gdb) si
+[   0:7c2d] => 0x7c2d:  ljmp   $0xb866,$0x80032
+```
+
+So the first instruction to see whether the entry point address is wrong is the first long jump which may change the segment.
+
+But why the machine seems running as an endless loop:
+
+Since first we just map the 4MB memory from virtual to physical, the other parts of the memory is not paged, so visiting these address will cause an error to break down the machine, but the qemu may reboot automatically when the virt. machine is down on time, so there comes an endless loop.
+
+- How does the memory virt-phys mapping happens?
+
+Set a break point at `0x7C2A` since it is the point where the system switch from non-paging to paging mode:
+```
+(gdb) b *0x7c2a
+(gdb) set $mem_s = 0x100000
+(gdb) set $mem_e = 0xF0100000
+```
+
+Since the page mapping is set, every memory request to the VA address will be translated into its corresponding physical address automatically.
